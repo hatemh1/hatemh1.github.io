@@ -1,0 +1,274 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Journal - Dual Overview Edition</title>
+    <style>
+        :root {
+            --bg-color: #e5e5e5; 
+            --ui-dark: #222222; 
+            --shadow-core: rgba(0, 0, 0, 0.15); 
+        }
+
+        body {
+            margin: 0;
+            overflow: hidden;
+            background-color: var(--bg-color);
+            background-image: radial-gradient(circle at center, #f0f0f0 0%, #e0e0e0 100%);
+            font-family: -apple-system, sans-serif;
+            user-select: none;
+        }
+
+        .grain-overlay {
+            position: fixed;
+            top: 0; left: 0;
+            width: 100%; height: 100%;
+            z-index: 20000;
+            pointer-events: none;
+            opacity: 0.05; 
+        }
+
+        #nav-layer {
+            position: fixed;
+            top: 40px; left: 40px;
+            z-index: 10000;
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+        }
+
+        .nav-btn {
+            background: none; border: none;
+            color: var(--ui-dark);
+            font-size: 11px; text-transform: uppercase; letter-spacing: 0.2em;
+            font-weight: 500;
+            cursor: pointer;
+            text-align: left;
+            padding: 0;
+            width: fit-content;
+        }
+
+        #scene {
+            width: 100vw; height: 100vh;
+            perspective: 2500px;
+            display: flex; align-items: center; justify-content: center;
+        }
+
+        #viewport { 
+            display: grid; 
+            grid-template-columns: repeat(8, 600px); 
+            grid-template-rows: repeat(2, 800px); 
+            gap: 0px;
+            position: absolute; 
+            transition: transform 1s cubic-bezier(0.4, 0, 0.2, 1);
+            transform-style: preserve-3d;
+        }
+
+        .corner-trigger {
+            position: absolute;
+            width: 100px; height: 100px; 
+            z-index: 100;
+            cursor: pointer;
+        }
+
+        .tl { top: 0; left: 0; background: radial-gradient(circle at 0% 0%, var(--shadow-core) 0%, transparent 75%); }
+        .tr { top: 0; right: 0; background: radial-gradient(circle at 100% 0%, var(--shadow-core) 0%, transparent 75%); }
+        .bl { bottom: 0; left: 0; background: radial-gradient(circle at 0% 100%, var(--shadow-core) 0%, transparent 75%); }
+        .br { bottom: 0; right: 0; background: radial-gradient(circle at 100% 100%, var(--shadow-core) 0%, transparent 75%); }
+
+        .corner-label {
+            position: absolute;
+            color: var(--ui-dark);
+            font-size: 10px;
+            font-weight: 600;
+            letter-spacing: 2px;
+            white-space: nowrap;
+            pointer-events: none;
+            opacity: 0;
+            z-index: 10001;
+        }
+
+        @keyframes blink-fade {
+            0%, 20%, 40%, 60% { opacity: 0.8; }
+            10%, 30%, 50% { opacity: 0.1; }
+            100% { opacity: 0; }
+        }
+        .show-guide { animation: blink-fade 2.5s forwards; }
+
+        #label-tl { top: -25px; left: 0; }
+        #label-tr { top: -25px; right: 0; text-align: right; }
+        #label-bl { bottom: -25px; left: 0; }
+        #label-br { bottom: -25px; right: 0; text-align: right; }
+
+        .page-container { width: 600px; height: 800px; position: relative; transform-style: preserve-3d; }
+        .face { 
+            position: absolute; width: 100%; height: 100%; 
+            backface-visibility: hidden; background-color: white; 
+            outline: 1px solid rgba(0,0,0,0.06);
+            cursor: pointer;
+        }
+        .face.front { z-index: 2; transform: rotateY(0deg); }
+        .face.back { transform: rotateX(180deg); }
+
+        #spine-shadow {
+            position: absolute; top: 0; left: 0; width: 4800px; height: 1600px;
+            background: linear-gradient(to bottom, transparent 790px, rgba(0,0,0,0.05) 800px, transparent 810px);
+            pointer-events: none; z-index: 10; opacity: 0; transition: opacity 0.8s;
+        }
+    </style>
+</head>
+<body>
+
+    <svg class="grain-overlay">
+        <filter id="noise">
+            <feTurbulence type="fractalNoise" baseFrequency="0.9" numOctaves="4" stitchTiles="stitch" />
+            <feColorMatrix type="saturate" values="0" />
+        </filter>
+        <rect width="100%" height="100%" filter="url(#noise)" />
+    </svg>
+
+    <div id="nav-layer">
+        <button class="nav-btn" onclick="goToFrontOverview()">Methodology</button>
+        <button class="nav-btn" onclick="goToBackOverview()">Figures</button>
+    </div>
+
+    <div id="scene">
+        <div id="viewport">
+            <div id="spine-shadow"></div>
+            
+            <div id="label-tl" class="corner-label">FLIP</div>
+            <div id="label-tr" class="corner-label">FLIP</div>
+            <div id="label-bl" class="corner-label">FLIP</div>
+            <div id="label-br" class="corner-label">FLIP</div>
+
+            <div class="corner-trigger tl" onclick="toggleFlip()"></div>
+            <div class="corner-trigger tr" onclick="toggleFlip()"></div>
+            <div class="corner-trigger bl" onclick="toggleFlip()"></div>
+            <div class="corner-trigger br" onclick="toggleFlip()"></div>
+        </div>
+    </div>
+
+    <script>
+        const viewport = document.getElementById('viewport');
+        const spineShadow = document.getElementById('spine-shadow');
+
+        let isFlipped = false; 
+        let currentIndex = 0;
+        
+        const masterSequence = [
+            "overview", "fold", 
+            1, 2, 3, 4, 5, 6, 7, 8, 16, 15, 14, 13, 12, 11, 10, 9, 
+            "auto-flip", 
+            17, 18, 19, 20, 21, 22, 23, 24, 32, 31, 30, 29, 28, 27, 26, 25,
+            "fold"
+        ];
+
+        function buildJournal() {
+            for (let i = 0; i < 16; i++) {
+                const container = document.createElement('div');
+                container.className = 'page-container';
+                
+                const front = document.createElement('img');
+                // Updated path to boards folder
+                front.src = `boards/f${i + 1}.png`;
+                front.className = 'face front';
+                front.onclick = () => handleImageClick(i + 1);
+                
+                const back = document.createElement('img');
+                // Updated path to boards folder
+                back.src = `boards/b${i + 17}.png`;
+                back.className = 'face back';
+                back.onclick = () => handleImageClick(i + 17);
+
+                container.appendChild(front);
+                container.appendChild(back);
+                viewport.appendChild(container);
+            }
+        }
+
+        function handleImageClick(boardID) {
+            if ([1, 9].includes(boardID)) {
+                currentIndex = 1; 
+                render();
+            } else {
+                const newIndex = masterSequence.indexOf(boardID);
+                if (newIndex !== -1) {
+                    currentIndex = newIndex;
+                    render();
+                }
+            }
+        }
+
+        function triggerGuide(labelId) {
+            const el = document.getElementById(labelId);
+            if(!el) return;
+            el.classList.remove('show-guide');
+            void el.offsetWidth; 
+            el.classList.add('show-guide');
+        }
+
+        function render() {
+            const step = masterSequence[currentIndex];
+            let scale, tx, ty, rotZ, rotX = isFlipped ? 180 : 0;
+
+            spineShadow.style.opacity = '0';
+
+            if (step === "overview") {
+                scale = 0.22; tx = 0; ty = 0; rotZ = 0;
+            } else if (step === "fold") {
+                scale = 0.6; tx = 2100; ty = 0; rotZ = 90;
+                spineShadow.style.opacity = '1';
+            } else if (step === "auto-flip") {
+                scale = 0.4; tx = 0; ty = 0; rotZ = 0;
+                setTimeout(() => { toggleFlip(); }, 50); 
+                return;
+            } else {
+                scale = 0.82;
+                const boardID = step;
+                const isBackPanel = (boardID > 16);
+                
+                if (isBackPanel && !isFlipped) { isFlipped = true; rotX = 180; }
+                if (!isBackPanel && isFlipped) { isFlipped = false; rotX = 0; }
+                
+                const normalizedID = isBackPanel ? (boardID - 17) : (boardID - 1);
+                const col = normalizedID % 8;
+                const row = Math.floor(normalizedID / 8);
+                tx = 2100 - (col * 600);
+                ty = (row === 0) ? 400 : -400;
+                rotZ = isBackPanel ? ((boardID > 24) ? 180 : 0) : ((boardID > 8) ? -180 : 0);
+
+                if (normalizedID === 0) triggerGuide('label-tl');
+                if (normalizedID === 7) triggerGuide('label-tr');
+                if (normalizedID === 8) triggerGuide('label-bl');
+                if (normalizedID === 15) triggerGuide('label-br');
+            }
+            viewport.style.transform = `scale(${scale}) rotateX(${rotX}deg) rotateZ(${rotZ}deg) translate(${tx}px, ${ty}px)`;
+        }
+
+        function toggleFlip() {
+            isFlipped = !isFlipped;
+            const step = masterSequence[currentIndex];
+            if (typeof step === 'number') {
+                const newID = isFlipped ? step + 16 : step - 16;
+                currentIndex = masterSequence.indexOf(newID);
+            }
+            render();
+        }
+
+        function goToFrontOverview() { 
+            currentIndex = 0; 
+            isFlipped = false; 
+            render(); 
+        }
+
+        function goToBackOverview() { 
+            currentIndex = 0; 
+            isFlipped = true; 
+            render(); 
+        }
+
+        buildJournal();
+        render();
+    </script>
+</body>
+</html>
